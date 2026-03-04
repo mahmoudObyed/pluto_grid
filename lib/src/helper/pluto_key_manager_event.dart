@@ -66,6 +66,9 @@ class PlutoKeyManagerEvent {
   bool get isBackspace =>
       event.logicalKey.keyId == LogicalKeyboardKey.backspace.keyId;
 
+  bool get isDelete =>
+      event.logicalKey.keyId == LogicalKeyboardKey.delete.keyId;
+
   bool get isShift =>
       event.logicalKey.keyId == LogicalKeyboardKey.shift.keyId ||
       event.logicalKey.keyId == LogicalKeyboardKey.shiftLeft.keyId ||

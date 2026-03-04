@@ -172,6 +172,36 @@ mixin TextCellState<T extends TextCell> on State<T> implements TextFieldProps {
     });
   }
 
+  /// Handles backspace ([deleteForward] = false) and delete ([deleteForward] = true)
+  /// by directly manipulating the [_textController]. This avoids relying on the
+  /// _skip/ignored pass-through mechanism, which is unreliable for special keys
+  /// in newer Flutter versions.
+  KeyEventResult _handleDeletion({required bool deleteForward}) {
+    final sel = _textController.selection;
+    final text = _textController.text;
+
+    if (!sel.isValid) return KeyEventResult.handled;
+
+    if (!sel.isCollapsed) {
+      _textController.value = TextEditingValue(
+        text: text.replaceRange(sel.start, sel.end, ''),
+        selection: TextSelection.collapsed(offset: sel.start),
+      );
+    } else if (!deleteForward && sel.baseOffset > 0) {
+      _textController.value = TextEditingValue(
+        text: text.replaceRange(sel.baseOffset - 1, sel.baseOffset, ''),
+        selection: TextSelection.collapsed(offset: sel.baseOffset - 1),
+      );
+    } else if (deleteForward && sel.baseOffset < text.length) {
+      _textController.value = TextEditingValue(
+        text: text.replaceRange(sel.baseOffset, sel.baseOffset + 1, ''),
+        selection: TextSelection.collapsed(offset: sel.baseOffset),
+      );
+    }
+
+    return KeyEventResult.handled;
+  }
+
   KeyEventResult _handleOnKey(FocusNode node, KeyEvent event) {
     var keyManager = PlutoKeyManagerEvent(
       focusNode: node,
@@ -180,6 +210,17 @@ mixin TextCellState<T extends TextCell> on State<T> implements TextFieldProps {
 
     if (keyManager.isKeyUpEvent) {
       return KeyEventResult.handled;
+    }
+
+    // Explicitly handle backspace and delete to ensure reliable behavior across
+    // Flutter versions. The _skip/ignored pass-through mechanism is not reliable
+    // for special keys in newer Flutter due to changes in EditableText key handling.
+    if (keyManager.isBackspace) {
+      return _handleDeletion(deleteForward: false);
+    }
+
+    if (keyManager.isDelete) {
+      return _handleDeletion(deleteForward: true);
     }
 
     final skip = !(keyManager.isVertical ||
