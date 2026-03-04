@@ -253,11 +253,22 @@ mixin TextCellState<T extends TextCell> on State<T> implements TextFieldProps {
       return _handleDeletion(deleteForward: true);
     }
 
-    // Handle printable character input directly to ensure it works across
-    // Flutter versions where the skip/ignored pass-through may not reach EditableText.
-    // char.codeUnitAt(0) >= 32 filters out control characters (Enter \r, Tab \t, etc.)
-    // so they fall through to the existing handling below.
-    final char = event.character;
+    // Handle printable character input directly to ensure it works across all
+    // platforms and Flutter versions where the skip/ignored pass-through may
+    // not reliably reach EditableText.
+    //
+    // Try event.character first (correct value with modifiers like Shift applied).
+    // Fall back to logicalKey.keyLabel for keyboards (e.g. Android number keyboard)
+    // that send key events without a character value (event.character == null).
+    String? char = event.character;
+    if ((char == null || char.isEmpty) && keyManager.isCharacter) {
+      final label = event.logicalKey.keyLabel;
+      // keyLabel is a single printable char for digit/letter keys (e.g. "5", "a")
+      if (label.length == 1 && label.codeUnitAt(0) >= 32) {
+        char = label;
+      }
+    }
+    // codeUnitAt(0) >= 32 filters out control characters (Enter \r=13, Tab \t=9, etc.)
     if (char != null && char.isNotEmpty && char.codeUnitAt(0) >= 32) {
       return _handleCharacterInput(char);
     }
