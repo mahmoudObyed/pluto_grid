@@ -202,6 +202,36 @@ mixin TextCellState<T extends TextCell> on State<T> implements TextFieldProps {
     return KeyEventResult.handled;
   }
 
+  /// Inserts [char] at the current cursor position (or replaces the selection),
+  /// then applies [inputFormatters] so that validators like
+  /// [DecimalTextInputFormatter] can still reject invalid input.
+  KeyEventResult _handleCharacterInput(String char) {
+    final sel = _textController.selection;
+    final text = _textController.text;
+
+    final insertAt = sel.isValid ? sel.start : text.length;
+    final deleteEnd = sel.isValid ? sel.end : text.length;
+
+    final newText = text.replaceRange(insertAt, deleteEnd, char);
+    final newOffset = insertAt + char.length;
+
+    final oldValue = _textController.value;
+    final newValue = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: newOffset),
+    );
+
+    // Apply all formatters (e.g. DecimalTextInputFormatter for number cells).
+    // If the input is invalid, the formatter returns oldValue, rejecting the char.
+    final filtered = (inputFormatters ?? []).fold<TextEditingValue>(
+      newValue,
+      (v, f) => f.formatEditUpdate(oldValue, v),
+    );
+
+    _textController.value = filtered;
+    return KeyEventResult.handled;
+  }
+
   KeyEventResult _handleOnKey(FocusNode node, KeyEvent event) {
     var keyManager = PlutoKeyManagerEvent(
       focusNode: node,
@@ -221,6 +251,15 @@ mixin TextCellState<T extends TextCell> on State<T> implements TextFieldProps {
 
     if (keyManager.isDelete) {
       return _handleDeletion(deleteForward: true);
+    }
+
+    // Handle printable character input directly to ensure it works across
+    // Flutter versions where the skip/ignored pass-through may not reach EditableText.
+    // char.codeUnitAt(0) >= 32 filters out control characters (Enter \r, Tab \t, etc.)
+    // so they fall through to the existing handling below.
+    final char = event.character;
+    if (char != null && char.isNotEmpty && char.codeUnitAt(0) >= 32) {
+      return _handleCharacterInput(char);
     }
 
     final skip = !(keyManager.isVertical ||
