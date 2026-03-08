@@ -242,35 +242,40 @@ mixin TextCellState<T extends TextCell> on State<T> implements TextFieldProps {
       return KeyEventResult.handled;
     }
 
-    // Explicitly handle backspace and delete to ensure reliable behavior across
-    // Flutter versions. The _skip/ignored pass-through mechanism is not reliable
-    // for special keys in newer Flutter due to changes in EditableText key handling.
-    if (keyManager.isBackspace) {
-      return _handleDeletion(deleteForward: false);
-    }
-
-    if (keyManager.isDelete) {
-      return _handleDeletion(deleteForward: true);
-    }
-
-    // Handle printable character input directly to ensure it works across all
-    // platforms and Flutter versions where the skip/ignored pass-through may
-    // not reliably reach EditableText.
+    // On desktop, the skip/ignored pass-through mechanism is unreliable for
+    // backspace, delete, and character input in newer Flutter versions, so we
+    // handle them directly via controller manipulation.
     //
-    // Try event.character first (correct value with modifiers like Shift applied).
-    // Fall back to logicalKey.keyLabel for keyboards (e.g. Android number keyboard)
-    // that send key events without a character value (event.character == null).
-    String? char = event.character;
-    if ((char == null || char.isEmpty) && keyManager.isCharacter) {
-      final label = event.logicalKey.keyLabel;
-      // keyLabel is a single printable char for digit/letter keys (e.g. "5", "a")
-      if (label.length == 1 && label.codeUnitAt(0) >= 32) {
-        char = label;
+    // On mobile (Android/iOS), the IME (soft keyboard) handles all of these
+    // natively via the platform text input channel — bypassing key events
+    // entirely. Using direct controller manipulation on mobile conflicts with
+    // the IME state, causing double-deletions or the IME overwriting changes
+    // with a stale state on some Android versions. So on mobile we fall
+    // through to the skip path and let the IME handle everything.
+    if (PlatformHelper.isDesktop) {
+      if (keyManager.isBackspace) {
+        return _handleDeletion(deleteForward: false);
       }
-    }
-    // codeUnitAt(0) >= 32 filters out control characters (Enter \r=13, Tab \t=9, etc.)
-    if (char != null && char.isNotEmpty && char.codeUnitAt(0) >= 32) {
-      return _handleCharacterInput(char);
+
+      if (keyManager.isDelete) {
+        return _handleDeletion(deleteForward: true);
+      }
+
+      // Try event.character first (respects modifier keys like Shift).
+      // Fall back to logicalKey.keyLabel for keyboards that send key events
+      // without a character value (event.character == null).
+      String? char = event.character;
+      if ((char == null || char.isEmpty) && keyManager.isCharacter) {
+        final label = event.logicalKey.keyLabel;
+        // keyLabel is a single printable char for digit/letter keys (e.g. "5", "a")
+        if (label.length == 1 && label.codeUnitAt(0) >= 32) {
+          char = label;
+        }
+      }
+      // codeUnitAt(0) >= 32 filters out control characters (\r, \t, etc.)
+      if (char != null && char.isNotEmpty && char.codeUnitAt(0) >= 32) {
+        return _handleCharacterInput(char);
+      }
     }
 
     final skip = !(keyManager.isVertical ||
